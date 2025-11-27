@@ -28,8 +28,25 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Q
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+# Memory optimization for TensorFlow - MUST be before importing tf
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Reduce TF logging
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN optimizations
+
 import tensorflow as tf
 from tensorflow import keras
+
+# Configure TensorFlow for low memory environments
+tf.config.set_soft_device_placement(True)
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
+# Limit CPU memory usage
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
 
 # Configure logging
 logging.basicConfig(
@@ -214,7 +231,14 @@ def load_model_and_classes():
         
         logger.info(f"Loading model from {model_path}")
         # safe_mode=False needed because model contains Lambda layers
-        model = keras.models.load_model(str(model_path), safe_mode=False)
+        # compile=False reduces memory usage significantly
+        model = keras.models.load_model(str(model_path), safe_mode=False, compile=False)
+        
+        # Recompile with minimal settings for inference only
+        model.compile(optimizer='adam', loss='categorical_crossentropy')
+        
+        # Clear any cached data
+        keras.backend.clear_session()
         
         # Load class indices
         class_indices_path = DATA_DIR / "index_to_class.json"
@@ -736,10 +760,15 @@ async def debug_info():
             try:
                 logger.info("Attempting to load model...")
                 # safe_mode=False needed because model contains Lambda layers
-                loaded_model = keras.models.load_model(str(test_path), safe_mode=False)
+                # compile=False reduces memory usage significantly
+                loaded_model = keras.models.load_model(str(test_path), safe_mode=False, compile=False)
+                loaded_model.compile(optimizer='adam', loss='categorical_crossentropy')
                 app_state.model = loaded_model
                 app_state.model_loaded_at = datetime.now()
                 logger.info("Model loaded successfully!")
+                
+                # Clear memory
+                keras.backend.clear_session()
                 
                 # Load class indices
                 class_indices_path = DATA_DIR / "index_to_class.json"
