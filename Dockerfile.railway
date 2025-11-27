@@ -1,0 +1,36 @@
+# Simple Dockerfile for Railway deployment
+FROM python:3.10-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src \
+    PIP_NO_CACHE_DIR=1 \
+    PORT=8000
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements first for better caching
+COPY requirements.txt .
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy source code and data
+COPY src/ /app/src/
+COPY data/ /app/data/
+
+# Create models directory (model will be downloaded at runtime)
+RUN mkdir -p /app/models
+
+# Expose port
+EXPOSE 8000
+
+# Run API server
+CMD uvicorn src.api:app --host 0.0.0.0 --port ${PORT:-8000}
