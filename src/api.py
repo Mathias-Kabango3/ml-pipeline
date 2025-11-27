@@ -573,7 +573,12 @@ async def trigger_retrain(
     - **model_type**: Model type to train (default: resnet50)
     
     Retraining runs in background and can be monitored via /status endpoint.
-    Note: Requires train and val data directories. Not available on cloud deployments.
+    
+    **Note for cloud deployments (Railway):**
+    - Retraining on Railway is not recommended (no GPU, very slow)
+    - Use /upload/retrain_data to collect new training images
+    - Download collected images and retrain locally or on Kaggle/Colab with GPU
+    - Upload new model to Hugging Face for automatic deployment
     """
     if app_state.is_retraining:
         return RetrainResponse(
@@ -586,9 +591,24 @@ async def trigger_retrain(
     val_dir = DATA_DIR / "val"
     
     if not train_dir.exists() or not val_dir.exists():
+        # Check if we have uploaded retrain data
+        retrain_count = 0
+        if RETRAIN_DIR.exists():
+            for class_dir in RETRAIN_DIR.iterdir():
+                if class_dir.is_dir():
+                    retrain_count += len(list(class_dir.glob("*")))
+        
+        message = "Training data not available. "
+        if retrain_count > 0:
+            message += f"You have {retrain_count} images in retrain_data/. "
+            message += "Download them via GET /retrain_data/download and retrain locally with GPU, "
+            message += "then upload the new model to Hugging Face."
+        else:
+            message += "Upload training images via POST /upload/retrain_data first."
+        
         return RetrainResponse(
             success=False,
-            message="Training data not available. Retraining requires train/ and val/ directories with images. This feature is only available for local development."
+            message=message
         )
     
     # Check if directories have data
@@ -663,6 +683,136 @@ async def upload_retrain_data(
         "message": f"Saved {len(saved_files)} files for retraining",
         "files": saved_files
     }
+
+
+@app.get("/retrain_data/stats")
+async def get_retrain_data_stats():
+    """
+    Get statistics about uploaded retrain data.
+    
+    Returns count of images per class in the retrain_data directory.
+    """
+    stats = {
+        "total_images": 0,
+        "classes": {},
+        "ready_for_download": False
+    }
+    
+    if not RETRAIN_DIR.exists():
+        return stats
+    
+    for class_dir in RETRAIN_DIR.iterdir():
+        if class_dir.is_dir():
+            images = list(class_dir.glob("*"))
+            image_count = len([f for f in images if f.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']])
+            if image_count > 0:
+                stats["classes"][class_dir.name] = image_count
+                stats["total_images"] += image_count
+    
+    stats["ready_for_download"] = stats["total_images"] > 0
+    
+    return stats
+
+
+@app.get("/retrain_data/download")
+async def download_retrain_data():
+    """
+    Download all uploaded retrain data as a ZIP file.
+    
+    Use this to download images uploaded via /upload/retrain_data,
+    then retrain the model locally or on Kaggle/Colab with GPU.
+    """
+    import zipfile
+    import tempfile
+    from fastapi.responses import FileResponse
+    
+    if not RETRAIN_DIR.exists():
+        raise HTTPException(status_code=404, detail="No retrain data available")
+    
+    # Check if there are any images
+    total_images = 0
+    for class_dir in RETRAIN_DIR.iterdir():
+        if class_dir.is_dir():
+            total_images += len(list(class_dir.glob("*")))
+    
+    if total_images == 0:
+        raise HTTPException(status_code=404, detail="No images in retrain_data directory")
+    
+    # Create a temporary ZIP file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp_file:
+        zip_path = tmp_file.name
+    
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for class_dir in RETRAIN_DIR.iterdir():
+            if class_dir.is_dir():
+                for img_file in class_dir.iterdir():
+                    if img_file.is_file():
+                        arcname = f"retrain_data/{class_dir.name}/{img_file.name}"
+                        zipf.write(img_file, arcname)
+    
+    return FileResponse(
+        zip_path,
+        media_type='application/zip',
+        filename=f"retrain_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    )
+
+
+@app.delete("/retrain_data/clear")
+async def clear_retrain_data():
+    """
+    Clear all uploaded retrain data.
+    
+    Use after downloading and successfully retraining the model.
+    """
+    import shutil
+    
+    if not RETRAIN_DIR.exists():
+        return {"success": True, "message": "Retrain data directory does not exist"}
+    
+    cleared_count = 0
+    for class_dir in RETRAIN_DIR.iterdir():
+        if class_dir.is_dir():
+            cleared_count += len(list(class_dir.glob("*")))
+            shutil.rmtree(class_dir)
+    
+    return {
+        "success": True,
+        "message": f"Cleared {cleared_count} images from retrain data"
+    }
+
+
+@app.post("/model/reload")
+async def reload_model():
+    """
+    Reload the model from Hugging Face.
+    
+    Use after uploading a new model to Hugging Face to update the deployed model.
+    This will download the latest model version.
+    """
+    global app_state
+    
+    # Delete existing model to force re-download
+    model_path = MODELS_DIR / "plant_disease_model_v2.keras"
+    if model_path.exists():
+        model_path.unlink()
+        logger.info(f"Deleted existing model: {model_path}")
+    
+    # Reload model
+    app_state.model, app_state.class_indices = load_model_and_classes()
+    
+    if app_state.model is not None:
+        app_state.model_loaded_at = datetime.now()
+        return {
+            "success": True,
+            "message": "Model reloaded successfully from Hugging Face",
+            "model_loaded_at": app_state.model_loaded_at.isoformat(),
+            "num_classes": len(app_state.class_indices)
+        }
+    else:
+        return {
+            "success": False,
+            "message": "Failed to reload model. Check logs for details."
+        }
 
 
 @app.get("/classes")
