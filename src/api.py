@@ -167,13 +167,21 @@ def download_model_from_url(url: str, dest_path: Path) -> bool:
 def load_model_and_classes():
     """Load the trained model and class mappings."""
     try:
-        # Check for model download URL in environment variable or use default HuggingFace URL
-        model_url = os.environ.get("MODEL_DOWNLOAD_URL", HUGGINGFACE_MODEL_URL)
+        # Always use the hardcoded HuggingFace URL (ignore environment variable)
+        model_url = HUGGINGFACE_MODEL_URL
         default_model_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
         
-        # Always try to download if model doesn't exist locally
+        # Check if existing file is corrupted (too small)
+        if default_model_path.exists():
+            file_size = default_model_path.stat().st_size
+            if file_size < 1_000_000:  # Less than 1MB is definitely wrong
+                logger.warning(f"Model file is corrupted ({file_size} bytes), removing...")
+                default_model_path.unlink()
+        
+        # Download if model doesn't exist locally
         if not default_model_path.exists():
             logger.info("Model not found locally, attempting to download from Hugging Face...")
+            logger.info(f"URL: {model_url}")
             download_model_from_url(model_url, default_model_path)
         
         # Try to find the best model - check multiple patterns
@@ -700,13 +708,18 @@ async def debug_info():
     if models_exists:
         model_files = [{"name": f.name, "size": f.stat().st_size} for f in MODELS_DIR.iterdir()]
     
-    # Check environment
-    model_url = os_module.environ.get("MODEL_DOWNLOAD_URL", HUGGINGFACE_MODEL_URL)
+    # Check environment - IGNORE env var, always use the correct URL
+    model_url = HUGGINGFACE_MODEL_URL  # Always use the hardcoded correct URL
     
     # Try to load model now
     load_error = None
     try:
         test_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
+        # Check if file exists and is valid (>1MB)
+        if test_path.exists() and test_path.stat().st_size < 1_000_000:
+            logger.warning(f"Model file is corrupted ({test_path.stat().st_size} bytes), removing...")
+            test_path.unlink()
+        
         if not test_path.exists():
             # Try downloading
             download_model_from_url(model_url, test_path)
