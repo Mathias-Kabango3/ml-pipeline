@@ -1,0 +1,52 @@
+# Requirements for Plant Disease Classification Pipeline
+# ======================================================
+
+# Core ML/DL frameworks
+tensorflow>=2.13.0
+tensorflow-hub>=0.14.0
+
+# Data processing and analysis
+numpy>=1.24.0
+pandas>=2.0.0
+scikit-learn>=1.3.0
+Pillow>=10.0.0
+
+# SSL certificate handling (for macOS)
+certifi>=2023.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.15.0
+
+# API Framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+
+# UI Framework
+streamlit>=1.25.0
+requests>=2.31.0
+
+# MLOps and tracking
+mlflow>=2.5.0
+
+# File watching for auto-retrain
+watchdog>=3.0.0
+
+# Load testing
+locust>=2.15.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Additional utilities
+python-json-logger>=2.0.0
+
+# Development and testing (optional)
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.7.0
+isort>=5.12.0
+flake8>=6.1.0
