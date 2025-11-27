@@ -1,0 +1,165 @@
+# Docker Compose for Plant Disease Classification Pipeline
+# =========================================================
+# Run with: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # FastAPI Backend Service
+  api:
+    build:
+      context: .
+      target: api
+    container_name: plant-disease-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - PYTHONPATH=/app/src
+      - TF_CPP_MIN_LOG_LEVEL=2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - plant-disease-network
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+  # Streamlit UI Service
+  ui:
+    build:
+      context: .
+      target: ui
+    container_name: plant-disease-ui
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+    environment:
+      - API_URL=http://api:8000
+      - PYTHONPATH=/app/src
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - plant-disease-network
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  # Training Service (run on demand)
+  training:
+    build:
+      context: .
+      target: training
+    container_name: plant-disease-training
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./plantvillagedataset:/app/plantvillagedataset
+      - ./logs:/app/logs
+      - ./mlruns:/app/mlruns
+    environment:
+      - PYTHONPATH=/app/src
+      - TF_CPP_MIN_LOG_LEVEL=2
+    profiles:
+      - training
+    networks:
+      - plant-disease-network
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+
+  # TensorBoard for monitoring training
+  tensorboard:
+    image: tensorflow/tensorflow:latest
+    container_name: plant-disease-tensorboard
+    ports:
+      - "6006:6006"
+    volumes:
+      - ./logs:/logs
+    command: tensorboard --logdir=/logs --host=0.0.0.0 --port=6006
+    profiles:
+      - monitoring
+    networks:
+      - plant-disease-network
+
+  # MLflow tracking server
+  mlflow:
+    image: python:3.10-slim
+    container_name: plant-disease-mlflow
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlruns
+    command: >
+      bash -c "pip install mlflow && mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns"
+    profiles:
+      - monitoring
+    networks:
+      - plant-disease-network
+
+  # Locust load testing (run on demand)
+  locust:
+    build:
+      context: .
+      target: base
+    container_name: plant-disease-locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./src:/app/src
+    environment:
+      - API_HOST=http://api:8000
+    command: locust -f src/locustfile.py --host http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    profiles:
+      - testing
+    networks:
+      - plant-disease-network
+
+  # Nginx reverse proxy (optional, for production)
+  nginx:
+    image: nginx:alpine
+    container_name: plant-disease-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - ui
+    profiles:
+      - production
+    networks:
+      - plant-disease-network
+
+networks:
+  plant-disease-network:
+    driver: bridge
+
+volumes:
+  models:
+  data:
+  logs:
+  mlruns:
