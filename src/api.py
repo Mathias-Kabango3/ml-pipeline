@@ -107,9 +107,34 @@ class DatasetStatsResponse(BaseModel):
 
 
 # Helper functions
+def download_model_from_url(url: str, dest_path: Path) -> bool:
+    """Download model from external URL if not exists locally."""
+    import urllib.request
+    
+    if dest_path.exists():
+        logger.info(f"Model already exists at {dest_path}")
+        return True
+    
+    try:
+        logger.info(f"Downloading model from {url}...")
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(url, str(dest_path))
+        logger.info(f"Model downloaded successfully to {dest_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to download model: {e}")
+        return False
+
+
 def load_model_and_classes():
     """Load the trained model and class mappings."""
     try:
+        # Check for model download URL in environment variable
+        model_url = os.environ.get("MODEL_DOWNLOAD_URL")
+        if model_url:
+            default_model_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
+            download_model_from_url(model_url, default_model_path)
+        
         # Try to find the best model - check multiple patterns
         model_paths = [
             MODELS_DIR / "plant_disease_resnet50_best.keras",
@@ -135,6 +160,7 @@ def load_model_and_classes():
         
         if model_path is None:
             logger.warning(f"No trained model found in {MODELS_DIR}. Available files: {list(MODELS_DIR.glob('*')) if MODELS_DIR.exists() else 'DIR NOT FOUND'}")
+            logger.warning("Set MODEL_DOWNLOAD_URL environment variable to download the model automatically.")
             return None, {}
         
         logger.info(f"Loading model from {model_path}")
