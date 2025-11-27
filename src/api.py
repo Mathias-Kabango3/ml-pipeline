@@ -186,7 +186,7 @@ def load_model_and_classes():
     try:
         # Always use the hardcoded HuggingFace URL (ignore environment variable)
         model_url = HUGGINGFACE_MODEL_URL
-        default_model_path = MODELS_DIR / "plant_disease_model.h5"
+        default_model_path = MODELS_DIR / "plant_disease_resnet50_checkpoint_01.h5"
         
         # Check if existing file is corrupted (too small)
         if default_model_path.exists():
@@ -203,10 +203,9 @@ def load_model_and_classes():
         
         # Try to find the best model - check multiple patterns (H5 first)
         model_paths = [
-            MODELS_DIR / "plant_disease_model.h5",
             MODELS_DIR / "plant_disease_resnet50_checkpoint_01.h5",
             MODELS_DIR / "plant_disease_resnet50_best.h5",
-            MODELS_DIR / "plant_disease_resnet50_best.keras",
+            MODELS_DIR / "plant_disease_model.h5",
         ]
         
         # Also search for any .h5 or .keras files
