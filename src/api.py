@@ -125,8 +125,8 @@ class DatasetStatsResponse(BaseModel):
 
 # Helper functions
 # Hugging Face model URL (direct download link)
-# Use the checkpoint file which is the actual trained model (~97MB)
-HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_resnet50_checkpoint_01.keras"
+# Use H5 format for better compatibility across TensorFlow versions
+HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_resnet50_checkpoint_01.h5"
 
 
 def download_model_from_url(url: str, dest_path: Path) -> bool:
@@ -186,7 +186,7 @@ def load_model_and_classes():
     try:
         # Always use the hardcoded HuggingFace URL (ignore environment variable)
         model_url = HUGGINGFACE_MODEL_URL
-        default_model_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
+        default_model_path = MODELS_DIR / "plant_disease_model.h5"
         
         # Check if existing file is corrupted (too small)
         if default_model_path.exists():
@@ -201,21 +201,22 @@ def load_model_and_classes():
             logger.info(f"URL: {model_url}")
             download_model_from_url(model_url, default_model_path)
         
-        # Try to find the best model - check multiple patterns
+        # Try to find the best model - check multiple patterns (H5 first)
         model_paths = [
+            MODELS_DIR / "plant_disease_model.h5",
+            MODELS_DIR / "plant_disease_resnet50_checkpoint_01.h5",
+            MODELS_DIR / "plant_disease_resnet50_best.h5",
             MODELS_DIR / "plant_disease_resnet50_best.keras",
-            MODELS_DIR / "plant_disease_resnet50_checkpoint_01.keras",
-            MODELS_DIR / "plant_disease_resnet50_final.keras",
         ]
         
-        # Also search for any .keras or .h5 files
+        # Also search for any .h5 or .keras files
         if MODELS_DIR.exists():
-            for keras_file in MODELS_DIR.glob("*.keras"):
-                if keras_file not in model_paths:
-                    model_paths.append(keras_file)
             for h5_file in MODELS_DIR.glob("*.h5"):
                 if h5_file not in model_paths:
                     model_paths.append(h5_file)
+            for keras_file in MODELS_DIR.glob("*.keras"):
+                if keras_file not in model_paths:
+                    model_paths.append(keras_file)
         
         model_path = None
         for path in model_paths:
@@ -230,9 +231,13 @@ def load_model_and_classes():
             return None, {}
         
         logger.info(f"Loading model from {model_path}")
-        # safe_mode=False needed because model contains Lambda layers
-        # compile=False reduces memory usage significantly
-        model = keras.models.load_model(str(model_path), safe_mode=False, compile=False)
+        # Load model - H5 format is simpler and more compatible
+        try:
+            model = keras.models.load_model(str(model_path), compile=False)
+            logger.info("Model loaded successfully")
+        except Exception as e:
+            logger.error(f"Failed to load model: {e}")
+            return None, {}
         
         # Recompile with minimal settings for inference only
         model.compile(optimizer='adam', loss='categorical_crossentropy')
