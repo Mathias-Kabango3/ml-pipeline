@@ -188,11 +188,21 @@ def load_model_and_classes():
         model_url = HUGGINGFACE_MODEL_URL
         default_model_path = MODELS_DIR / "plant_disease_resnet50_checkpoint_01.h5"
         
+        # Clean up any old/corrupted model files
+        if MODELS_DIR.exists():
+            for old_file in MODELS_DIR.glob("*.h5"):
+                if old_file.name != "plant_disease_resnet50_checkpoint_01.h5":
+                    logger.info(f"Removing old model file: {old_file}")
+                    old_file.unlink()
+            for old_file in MODELS_DIR.glob("*.keras"):
+                logger.info(f"Removing old model file: {old_file}")
+                old_file.unlink()
+        
         # Check if existing file is corrupted (too small)
         if default_model_path.exists():
             file_size = default_model_path.stat().st_size
-            if file_size < 1_000_000:  # Less than 1MB is definitely wrong
-                logger.warning(f"Model file is corrupted ({file_size} bytes), removing...")
+            if file_size < 50_000_000:  # Less than 50MB is definitely wrong for this model
+                logger.warning(f"Model file seems corrupted ({file_size} bytes), removing...")
                 default_model_path.unlink()
         
         # Download if model doesn't exist locally
@@ -201,34 +211,15 @@ def load_model_and_classes():
             logger.info(f"URL: {model_url}")
             download_model_from_url(model_url, default_model_path)
         
-        # Try to find the best model - check multiple patterns (H5 first)
-        model_paths = [
-            MODELS_DIR / "plant_disease_resnet50_checkpoint_01.h5",
-            MODELS_DIR / "plant_disease_resnet50_best.h5",
-            MODELS_DIR / "plant_disease_model.h5",
-        ]
-        
-        # Also search for any .h5 or .keras files
-        if MODELS_DIR.exists():
-            for h5_file in MODELS_DIR.glob("*.h5"):
-                if h5_file not in model_paths:
-                    model_paths.append(h5_file)
-            for keras_file in MODELS_DIR.glob("*.keras"):
-                if keras_file not in model_paths:
-                    model_paths.append(keras_file)
-        
-        model_path = None
-        for path in model_paths:
-            if path.exists():
-                model_path = path
-                logger.info(f"Found model: {path}")
-                break
+        # Use only the specific model file
+        model_path = default_model_path if default_model_path.exists() else None
         
         if model_path is None:
             logger.warning(f"No trained model found in {MODELS_DIR}. Available files: {list(MODELS_DIR.glob('*')) if MODELS_DIR.exists() else 'DIR NOT FOUND'}")
             logger.warning("Set MODEL_DOWNLOAD_URL environment variable to download the model automatically.")
             return None, {}
         
+        logger.info(f"Found model: {model_path}")
         logger.info(f"Loading model from {model_path}")
         # Load model - H5 format with safe_mode=False for Lambda layers
         try:
