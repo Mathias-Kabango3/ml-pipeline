@@ -204,9 +204,8 @@ def load_model_and_classes():
         # Try to find the best model - check multiple patterns
         model_paths = [
             MODELS_DIR / "plant_disease_resnet50_best.keras",
+            MODELS_DIR / "plant_disease_resnet50_checkpoint_01.keras",
             MODELS_DIR / "plant_disease_resnet50_final.keras",
-            MODELS_DIR / "plant_disease_mobilenetv2_best.keras",
-            MODELS_DIR / "plant_disease_efficientnet_best.keras",
         ]
         
         # Also search for any .keras or .h5 files
@@ -215,7 +214,8 @@ def load_model_and_classes():
                 if keras_file not in model_paths:
                     model_paths.append(keras_file)
             for h5_file in MODELS_DIR.glob("*.h5"):
-                model_paths.append(h5_file)
+                if h5_file not in model_paths:
+                    model_paths.append(h5_file)
         
         model_path = None
         for path in model_paths:
