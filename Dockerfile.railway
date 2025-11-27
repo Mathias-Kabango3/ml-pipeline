@@ -22,12 +22,11 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code and data
+# Copy source code only (data/models downloaded at runtime)
 COPY src/ /app/src/
-COPY data/ /app/data/
 
-# Create models directory (model will be downloaded at runtime)
-RUN mkdir -p /app/models
+# Create directories for runtime data
+RUN mkdir -p /app/models /app/data/retrain_data
 
 # Expose port
 EXPOSE 8000

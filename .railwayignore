@@ -1,0 +1,48 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+.env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Large data files
+plantvillagedataset/
+plantvillagedataset.zip
+data/
+models/
+logs/
+mlruns/
+
+# Jupyter Notebook
+notebook/
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Model files (downloaded from HuggingFace at runtime)
+*.keras
+*.h5
+*.pb
+*.onnx
+*.tflite
+
+# Large images
+*.png
+modelperformance/
+dataset_distribution.png
+
+# Git
+.git/

@@ -753,11 +753,11 @@ elif page == "Retrain":
             if uploaded_files and final_class:
                 if st.button("Upload for Retraining", use_container_width=True):
                     with st.spinner("Uploading images..."):
-                    result = upload_retrain_images(uploaded_files, final_class)
-                    if result.get("success"):
-                        st.success(f"Successfully uploaded {len(uploaded_files)} images!")
-                    else:
-                        st.error(f"Upload failed: {result.get('error', 'Unknown error')}")
+                        result = upload_retrain_images(uploaded_files, final_class)
+                        if result.get("success"):
+                            st.success(f"Successfully uploaded {len(uploaded_files)} images!")
+                        else:
+                            st.error(f"Upload failed: {result.get('error', 'Unknown error')}")
     
     with col2:
         st.subheader("Trigger Retraining")
