@@ -364,28 +364,63 @@ spec:
             cpu: "2"
 ```
 
-## 📊 Load Testing
+## Load Testing
 
 ### Using Locust
 
 ```bash
 # Start Locust with web UI
-locust -f src/locustfile.py --host http://localhost:8000
+locust -f src/locustfile.py --host https://ml-pipeline-production-be57.up.railway.app
 
 # Headless mode
-locust -f src/locustfile.py --host http://localhost:8000 \
+locust -f src/locustfile.py --host https://ml-pipeline-production-be57.up.railway.app \
        --users 100 --spawn-rate 10 --run-time 5m \
        --headless --csv=results
 ```
 
-### Expected Performance
+### Load Test Results (Flood Request Simulation)
+
+We performed load testing on the deployed Railway API to simulate high traffic scenarios.
+
+**Test Configuration:**
+- Target: Railway API (https://ml-pipeline-production-be57.up.railway.app)
+- Users: 50 concurrent users
+- Spawn Rate: 10 users/second
+- Duration: 2 minutes
+
+**Results Summary:**
 
 | Metric | Value |
 |--------|-------|
-| Throughput | 50-100 req/s |
-| Latency (p50) | <200ms |
-| Latency (p95) | <500ms |
-| Memory | 2-4 GB |
+| Total Requests | 732 |
+| Requests/sec (RPS) | 6.1 |
+| Failure Rate | 0% |
+| Median Response Time | 4,800 ms |
+| 95th Percentile | 11,000 ms |
+| Max Response Time | 19,000 ms |
+
+**Endpoint Breakdown:**
+
+| Endpoint | Requests | Failures | Median (ms) | 95% (ms) |
+|----------|----------|----------|-------------|----------|
+| GET /health | 366 | 0 | 240 | 510 |
+| POST /predict | 366 | 0 | 9,100 | 17,000 |
+
+**Analysis:**
+- The API successfully handled all requests with **0% failure rate**
+- Health endpoint responds quickly (~240ms median)
+- Prediction endpoint is slower due to model inference on CPU (Railway free tier)
+- No errors or crashes under sustained load
+- System remained stable throughout the test
+
+### Expected Performance
+
+| Metric | Railway (CPU) | Local GPU |
+|--------|---------------|-----------|
+| Throughput | 6-10 req/s | 50-100 req/s |
+| Latency (p50) | ~5,000ms | <200ms |
+| Latency (p95) | ~11,000ms | <500ms |
+| Memory | 512MB-1GB | 2-4 GB |
 
 ## 🛠️ Configuration
 
