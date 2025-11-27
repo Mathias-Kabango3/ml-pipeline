@@ -686,6 +686,47 @@ async def get_metrics():
     return {"status": "no_metrics_available"}
 
 
+@app.get("/debug")
+async def debug_info():
+    """Debug endpoint to check model loading status."""
+    import os as os_module
+    
+    # Check directories
+    models_exists = MODELS_DIR.exists()
+    data_exists = DATA_DIR.exists()
+    
+    # List files in models directory
+    model_files = []
+    if models_exists:
+        model_files = [{"name": f.name, "size": f.stat().st_size} for f in MODELS_DIR.iterdir()]
+    
+    # Check environment
+    model_url = os_module.environ.get("MODEL_DOWNLOAD_URL", HUGGINGFACE_MODEL_URL)
+    
+    # Try to load model now
+    load_error = None
+    try:
+        test_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
+        if not test_path.exists():
+            # Try downloading
+            download_model_from_url(model_url, test_path)
+    except Exception as e:
+        load_error = str(e)
+    
+    return {
+        "base_dir": str(BASE_DIR),
+        "models_dir": str(MODELS_DIR),
+        "models_dir_exists": models_exists,
+        "data_dir_exists": data_exists,
+        "model_files": model_files,
+        "model_url": model_url,
+        "model_loaded": app_state.model is not None,
+        "load_error": load_error,
+        "class_indices_count": len(app_state.class_indices),
+        "huggingface_url": HUGGINGFACE_MODEL_URL
+    }
+
+
 # Error handlers
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
