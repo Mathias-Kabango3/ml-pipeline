@@ -231,9 +231,9 @@ def load_model_and_classes():
             return None, {}
         
         logger.info(f"Loading model from {model_path}")
-        # Load model - H5 format is simpler and more compatible
+        # Load model - H5 format with safe_mode=False for Lambda layers
         try:
-            model = keras.models.load_model(str(model_path), compile=False)
+            model = keras.models.load_model(str(model_path), compile=False, safe_mode=False)
             logger.info("Model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
