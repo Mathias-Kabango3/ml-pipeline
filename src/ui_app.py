@@ -101,6 +101,15 @@ def trigger_retrain(epochs: int, learning_rate: float, model_type: str) -> Dict:
         return {"success": False, "error": str(e)}
 
 
+def cancel_retrain() -> Dict:
+    """Cancel ongoing retraining via API."""
+    try:
+        response = requests.post(f"{API_URL}/retrain/cancel", timeout=10)
+        return response.json()
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def upload_retrain_images(files: List, class_name: str) -> Dict:
     """Upload images for retraining."""
     try:
@@ -798,6 +807,23 @@ elif page == "Retrain":
                         # Show the message from the API (could be info about cloud limitations)
                         error_msg = result.get("message") or result.get("error", "Unknown error")
                         st.warning(error_msg)
+        
+        # Show stop button if retraining is in progress
+        if api_status.get("is_retraining"):
+            st.markdown("---")
+            st.warning(f"Retraining in progress: {api_status.get('retrain_status', 'Running...')}")
+            progress = api_status.get("retrain_progress", 0)
+            st.progress(progress, text=f"{progress*100:.0f}% complete")
+            
+            if st.button("Stop Retraining", use_container_width=True, type="secondary"):
+                with st.spinner("Cancelling retraining..."):
+                    result = cancel_retrain()
+                    if result.get("success"):
+                        st.success("Cancellation requested. Training will stop shortly.")
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to cancel: {result.get('message', result.get('error', 'Unknown error'))}")
 
 
 elif page == "Dataset":
