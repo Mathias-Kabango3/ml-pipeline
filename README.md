@@ -11,7 +11,7 @@ A complete MLOps pipeline for plant disease classification using deep learning w
 ## Live Deployment
 
 - **API (Railway):** https://ml-pipeline-production-be57.up.railway.app
-- **UI Dashboard (Streamlit Cloud):** https://ml-pipeline-mathias.streamlit.app
+- **UI Dashboard (Streamlit Cloud):** https://mathias-kabango3-ml-pipeline-srcui-app-ustf0n.streamlit.app/
 - **Model (Hugging Face):** https://huggingface.co/mathiaskabango/plantvillagev2
 
 ## Table of Contents
