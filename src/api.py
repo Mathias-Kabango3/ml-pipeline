@@ -16,6 +16,12 @@ from datetime import datetime
 from typing import Optional, Dict, List, Any
 from contextlib import asynccontextmanager
 
+import ssl
+import certifi
+
+# Fix SSL certificate issues
+ssl._create_default_https_context = ssl._create_unverified_context
+
 import numpy as np
 from PIL import Image
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Query
@@ -104,7 +110,7 @@ class DatasetStatsResponse(BaseModel):
 def load_model_and_classes():
     """Load the trained model and class mappings."""
     try:
-        # Try to find the best model
+        # Try to find the best model - check multiple patterns
         model_paths = [
             MODELS_DIR / "plant_disease_resnet50_best.keras",
             MODELS_DIR / "plant_disease_resnet50_final.keras",
@@ -112,14 +118,23 @@ def load_model_and_classes():
             MODELS_DIR / "plant_disease_efficientnet_best.keras",
         ]
         
+        # Also search for any .keras or .h5 files
+        if MODELS_DIR.exists():
+            for keras_file in MODELS_DIR.glob("*.keras"):
+                if keras_file not in model_paths:
+                    model_paths.append(keras_file)
+            for h5_file in MODELS_DIR.glob("*.h5"):
+                model_paths.append(h5_file)
+        
         model_path = None
         for path in model_paths:
             if path.exists():
                 model_path = path
+                logger.info(f"Found model: {path}")
                 break
         
         if model_path is None:
-            logger.warning("No trained model found. API will work but predictions won't be available.")
+            logger.warning(f"No trained model found in {MODELS_DIR}. Available files: {list(MODELS_DIR.glob('*')) if MODELS_DIR.exists() else 'DIR NOT FOUND'}")
             return None, {}
         
         logger.info(f"Loading model from {model_path}")

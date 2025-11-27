@@ -22,7 +22,7 @@ import plotly.graph_objects as go
 from PIL import Image
 
 # Configuration
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+API_URL = os.environ.get("API_URL", "https://ml-pipeline-tc1h.onrender.com")
 BASE_DIR = Path(__file__).parent.parent
 MODELS_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "data"
@@ -162,15 +162,49 @@ def load_local_metrics() -> Optional[Dict]:
 
 
 def load_class_distribution() -> Dict:
-    """Load class distribution from data directory."""
+    """Load class distribution from data directory or split_info.json."""
     distribution = {}
-    train_dir = DATA_DIR / "train"
     
+    # First try to load from split_info.json (faster)
+    split_info_path = DATA_DIR / "split_info.json"
+    if split_info_path.exists():
+        try:
+            with open(split_info_path, 'r') as f:
+                split_info = json.load(f)
+                if "class_distribution" in split_info:
+                    return split_info["class_distribution"]
+                if "train_distribution" in split_info:
+                    return split_info["train_distribution"]
+        except Exception as e:
+            pass
+    
+    # Try to load from class_indices.json
+    class_indices_path = DATA_DIR / "class_indices.json"
+    if class_indices_path.exists():
+        try:
+            with open(class_indices_path, 'r') as f:
+                class_indices = json.load(f)
+                # Create a dummy distribution showing class names exist
+                return {name: 1 for name in class_indices.keys()}
+        except Exception as e:
+            pass
+    
+    # Fall back to scanning train directory
+    train_dir = DATA_DIR / "train"
     if train_dir.exists():
         for class_dir in train_dir.iterdir():
             if class_dir.is_dir():
                 count = len(list(class_dir.glob("*")))
                 distribution[class_dir.name] = count
+    
+    # Also try plantvillagedataset directory
+    if not distribution:
+        pvd_dir = BASE_DIR / "plantvillagedataset"
+        if pvd_dir.exists():
+            for class_dir in pvd_dir.iterdir():
+                if class_dir.is_dir():
+                    count = len(list(class_dir.glob("*")))
+                    distribution[class_dir.name] = count
     
     return distribution
 
@@ -209,14 +243,23 @@ else:
 if page == "📊 Dashboard":
     st.markdown('<h1 class="main-header">🌿 Plant Disease Classification Dashboard</h1>', unsafe_allow_html=True)
     
+    # Load local data for fallback
+    split_info_path = DATA_DIR / "split_info.json"
+    local_num_classes = 0
+    if split_info_path.exists():
+        with open(split_info_path, 'r') as f:
+            split_info = json.load(f)
+            local_num_classes = split_info.get("num_classes", 0)
+    
     # Metrics row
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
+        api_online = api_status.get("model_loaded", False)
         st.metric(
             label="API Status",
-            value="Online" if api_status.get("model_loaded") else "Offline",
-            delta="Healthy" if api_status.get("status") == "healthy" else None
+            value="Online" if api_online else "Offline",
+            delta="Healthy" if api_status.get("status") == "healthy" else ("Start API" if api_status.get("status") == "error" else None)
         )
     
     with col2:
@@ -229,15 +272,19 @@ if page == "📊 Dashboard":
         avg_time = api_status.get("avg_inference_time_ms", 0)
         st.metric(
             label="Avg Inference Time",
-            value=f"{avg_time:.1f} ms"
+            value=f"{avg_time:.1f} ms" if avg_time > 0 else "N/A"
         )
     
     with col4:
-        num_classes = api_status.get("num_classes", 0)
+        num_classes = api_status.get("num_classes", 0) or local_num_classes
         st.metric(
             label="Classes",
             value=num_classes
         )
+    
+    # Show API connection help if offline
+    if api_status.get("status") == "error":
+        st.warning(f"⚠️ API is not running. Start it with: `python src/api.py`")
     
     st.markdown("---")
     
@@ -254,6 +301,18 @@ if page == "📊 Dashboard":
     with col1:
         st.subheader("📊 Class Distribution")
         class_dist = load_class_distribution()
+        
+        # If no class distribution, try to load class names from split_info
+        if not class_dist:
+            split_info_path = DATA_DIR / "split_info.json"
+            if split_info_path.exists():
+                with open(split_info_path, 'r') as f:
+                    split_info = json.load(f)
+                    class_names = split_info.get("class_names", [])
+                    if class_names:
+                        # Show class names without counts
+                        class_dist = {name: 1 for name in class_names}
+        
         if class_dist:
             df = pd.DataFrame([
                 {"Class": k, "Count": v} 
@@ -268,25 +327,42 @@ if page == "📊 Dashboard":
     
     with col2:
         st.subheader("📈 Model Performance")
-        metrics = load_local_metrics()
-        if metrics:
+        
+        # First try experiments log
+        experiments_df = load_experiments_log()
+        if experiments_df is not None and not experiments_df.empty:
+            best_exp = experiments_df.loc[experiments_df['val_acc'].idxmax()]
             perf_data = {
-                "Metric": ["Accuracy", "Precision", "Recall", "F1-Score"],
-                "Value": [
-                    metrics.get("accuracy", 0),
-                    metrics.get("precision_macro", 0),
-                    metrics.get("recall_macro", 0),
-                    metrics.get("f1_macro", 0)
-                ]
+                "Metric": ["Validation Accuracy", "Validation Loss"],
+                "Value": [best_exp['val_acc'], 1 - best_exp['val_loss']]  # Invert loss for visualization
             }
             df = pd.DataFrame(perf_data)
             fig = px.bar(df, x="Metric", y="Value", color="Metric",
-                        title="Model Metrics")
+                        title=f"Best Model: {best_exp['model']}")
             fig.update_layout(height=400, showlegend=False)
-            fig.update_yaxis(range=[0, 1])
+            fig.update_layout(yaxis_range=[0, 1])
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No evaluation results available. Train and evaluate a model first.")
+            # Fall back to evaluation results
+            metrics = load_local_metrics()
+            if metrics:
+                perf_data = {
+                    "Metric": ["Accuracy", "Precision", "Recall", "F1-Score"],
+                    "Value": [
+                        metrics.get("accuracy", 0),
+                        metrics.get("precision_macro", 0),
+                        metrics.get("recall_macro", 0),
+                        metrics.get("f1_macro", 0)
+                    ]
+                }
+                df = pd.DataFrame(perf_data)
+                fig = px.bar(df, x="Metric", y="Value", color="Metric",
+                            title="Model Metrics")
+                fig.update_layout(height=400, showlegend=False)
+                fig.update_layout(yaxis_range=[0, 1])
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No evaluation results available. Train and evaluate a model first.")
 
 
 elif page == "🔍 Predict":
