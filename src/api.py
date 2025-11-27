@@ -315,7 +315,8 @@ def preprocess_image(image_bytes: bytes, img_size: tuple = None) -> np.ndarray:
 async def run_retraining(
     epochs: int = 10,
     learning_rate: float = 0.0001,
-    model_type: str = "resnet50"
+    model_type: str = "resnet50",
+    use_retrain_data: bool = False
 ):
     """Background task for model retraining."""
     global app_state
@@ -325,25 +326,29 @@ async def run_retraining(
         app_state.retrain_status = "Starting retraining..."
         app_state.retrain_progress = 0.0
         
-        logger.info(f"Starting retraining with epochs={epochs}, lr={learning_rate}")
+        logger.info(f"Starting retraining with epochs={epochs}, lr={learning_rate}, use_retrain_data={use_retrain_data}")
         
-        # Import retrain module
-        from retrain import retrain_model
-        
-        app_state.retrain_status = "Preparing data..."
-        app_state.retrain_progress = 0.1
-        await asyncio.sleep(0.1)
-        
-        # Run retraining (this is CPU/GPU bound, so we run it in executor)
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            None, 
-            retrain_model,
-            epochs,
-            learning_rate,
-            model_type,
-            lambda p, s: update_progress(p, s)
-        )
+        if use_retrain_data:
+            # Lightweight retraining using uploaded retrain_data
+            result = await run_lightweight_retrain(epochs, learning_rate)
+        else:
+            # Full retraining using train/val directories
+            from retrain import retrain_model
+            
+            app_state.retrain_status = "Preparing data..."
+            app_state.retrain_progress = 0.1
+            await asyncio.sleep(0.1)
+            
+            # Run retraining (this is CPU/GPU bound, so we run it in executor)
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None, 
+                retrain_model,
+                epochs,
+                learning_rate,
+                model_type,
+                lambda p, s: update_progress(p, s)
+            )
         
         if result.get("success"):
             # Reload model
@@ -362,6 +367,174 @@ async def run_retraining(
         
     finally:
         app_state.is_retraining = False
+
+
+async def run_lightweight_retrain(epochs: int = 2, learning_rate: float = 0.0001):
+    """
+    Lightweight retraining using uploaded retrain_data.
+    Fine-tunes the existing model on new data.
+    Designed to work on Railway (CPU, limited memory).
+    """
+    global app_state
+    
+    try:
+        app_state.retrain_status = "Preparing retrain data..."
+        app_state.retrain_progress = 0.1
+        
+        # Check retrain_data directory
+        if not RETRAIN_DIR.exists():
+            return {"success": False, "error": "No retrain_data directory found"}
+        
+        # Get all classes and images
+        classes = []
+        all_images = []
+        all_labels = []
+        
+        for class_dir in sorted(RETRAIN_DIR.iterdir()):
+            if class_dir.is_dir():
+                class_name = class_dir.name
+                classes.append(class_name)
+                class_idx = len(classes) - 1
+                
+                for img_path in class_dir.glob("*"):
+                    if img_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.webp']:
+                        all_images.append(str(img_path))
+                        all_labels.append(class_idx)
+        
+        if not all_images:
+            return {"success": False, "error": "No images found in retrain_data/"}
+        
+        logger.info(f"Found {len(all_images)} images in {len(classes)} classes")
+        app_state.retrain_status = f"Found {len(all_images)} images in {len(classes)} classes"
+        app_state.retrain_progress = 0.2
+        
+        # Check if we have the current model
+        if app_state.model is None:
+            return {"success": False, "error": "No model loaded. Cannot fine-tune."}
+        
+        # Check class compatibility
+        model_num_classes = app_state.model.output_shape[-1]
+        if len(classes) > model_num_classes:
+            return {"success": False, "error": f"Too many classes ({len(classes)}). Model supports {model_num_classes} classes."}
+        
+        app_state.retrain_status = "Loading and preprocessing images..."
+        app_state.retrain_progress = 0.3
+        await asyncio.sleep(0.1)
+        
+        # Load images in batches to save memory
+        batch_size = 16
+        X_data = []
+        y_data = []
+        
+        for i, (img_path, label) in enumerate(zip(all_images, all_labels)):
+            try:
+                with open(img_path, 'rb') as f:
+                    img_bytes = f.read()
+                img_array = preprocess_image(img_bytes)[0]  # Remove batch dim
+                X_data.append(img_array)
+                y_data.append(label)
+                
+                if (i + 1) % 50 == 0:
+                    progress = 0.3 + (0.2 * (i + 1) / len(all_images))
+                    app_state.retrain_status = f"Loaded {i + 1}/{len(all_images)} images..."
+                    app_state.retrain_progress = progress
+                    await asyncio.sleep(0.01)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to load {img_path}: {e}")
+                continue
+        
+        if len(X_data) < 2:
+            return {"success": False, "error": "Not enough valid images loaded"}
+        
+        X_data = np.array(X_data)
+        y_data = tf.keras.utils.to_categorical(y_data, num_classes=model_num_classes)
+        
+        logger.info(f"Data shape: X={X_data.shape}, y={y_data.shape}")
+        
+        app_state.retrain_status = "Starting fine-tuning..."
+        app_state.retrain_progress = 0.5
+        await asyncio.sleep(0.1)
+        
+        # Create a copy of the model for fine-tuning
+        # Freeze early layers, only train the last few layers
+        model = app_state.model
+        
+        # Freeze all layers except the last 10
+        for layer in model.layers[:-10]:
+            layer.trainable = False
+        for layer in model.layers[-10:]:
+            layer.trainable = True
+        
+        # Compile with low learning rate
+        model.compile(
+            optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),
+            loss='categorical_crossentropy',
+            metrics=['accuracy']
+        )
+        
+        # Train with progress callback
+        class ProgressCallback(tf.keras.callbacks.Callback):
+            def on_epoch_end(self, epoch, logs=None):
+                progress = 0.5 + (0.4 * (epoch + 1) / epochs)
+                acc = logs.get('accuracy', 0) * 100
+                loss = logs.get('loss', 0)
+                app_state.retrain_status = f"Epoch {epoch + 1}/{epochs} - Acc: {acc:.1f}%, Loss: {loss:.4f}"
+                app_state.retrain_progress = progress
+                logger.info(f"Epoch {epoch + 1}/{epochs} - acc: {acc:.1f}%, loss: {loss:.4f}")
+        
+        # Run training in executor to not block
+        loop = asyncio.get_event_loop()
+        
+        def train_model():
+            history = model.fit(
+                X_data, y_data,
+                epochs=epochs,
+                batch_size=min(batch_size, len(X_data)),
+                validation_split=0.2 if len(X_data) > 10 else 0.0,
+                callbacks=[ProgressCallback()],
+                verbose=0
+            )
+            return history
+        
+        history = await loop.run_in_executor(None, train_model)
+        
+        app_state.retrain_status = "Saving model..."
+        app_state.retrain_progress = 0.95
+        
+        # Save the fine-tuned model
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        model_path = MODELS_DIR / "plant_disease_model_v2.keras"
+        model.save(str(model_path))
+        
+        # Update class indices if we have new classes
+        # Map the classes from retrain_data to existing class names
+        for i, class_name in enumerate(classes):
+            if i not in app_state.class_indices:
+                app_state.class_indices[i] = class_name
+        
+        final_acc = history.history.get('accuracy', [0])[-1] * 100
+        final_loss = history.history.get('loss', [0])[-1]
+        
+        logger.info(f"Fine-tuning complete! Final accuracy: {final_acc:.1f}%")
+        
+        return {
+            "success": True,
+            "message": f"Fine-tuning complete! Accuracy: {final_acc:.1f}%, Loss: {final_loss:.4f}",
+            "metrics": {
+                "accuracy": final_acc,
+                "loss": final_loss,
+                "epochs": epochs,
+                "images_trained": len(X_data),
+                "classes": classes
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Lightweight retrain error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)}
 
 
 def update_progress(progress: float, status: str):
@@ -600,6 +773,9 @@ async def trigger_retrain(
     - Use /upload/retrain_data to collect new training images
     - Download collected images and retrain locally or on Kaggle/Colab with GPU
     - Upload new model to Hugging Face for automatic deployment
+    
+    **Demo Mode:** If train/val directories don't exist but retrain_data has images,
+    the API will do lightweight fine-tuning on the uploaded images (works on Railway CPU).
     """
     if app_state.is_retraining:
         return RetrainResponse(
@@ -611,48 +787,61 @@ async def trigger_retrain(
     train_dir = DATA_DIR / "train"
     val_dir = DATA_DIR / "val"
     
+    # Check retrain_data for uploaded images
+    retrain_count = 0
+    retrain_classes = []
+    if RETRAIN_DIR.exists():
+        for class_dir in RETRAIN_DIR.iterdir():
+            if class_dir.is_dir():
+                class_images = len(list(class_dir.glob("*")))
+                if class_images > 0:
+                    retrain_count += class_images
+                    retrain_classes.append(class_dir.name)
+    
+    use_retrain_data = False
+    
     if not train_dir.exists() or not val_dir.exists():
-        # Check if we have uploaded retrain data
-        retrain_count = 0
-        if RETRAIN_DIR.exists():
-            for class_dir in RETRAIN_DIR.iterdir():
-                if class_dir.is_dir():
-                    retrain_count += len(list(class_dir.glob("*")))
-        
-        message = "Training data not available. "
+        # No train/val directories - check if we can use retrain_data
         if retrain_count > 0:
-            message += f"You have {retrain_count} images in retrain_data/. "
-            message += "Download them via GET /retrain_data/download and retrain locally with GPU, "
-            message += "then upload the new model to Hugging Face."
+            # Use lightweight fine-tuning on retrain_data
+            use_retrain_data = True
+            logger.info(f"Using lightweight fine-tuning with {retrain_count} images from retrain_data")
         else:
-            message += "Upload training images via POST /upload/retrain_data first."
+            return RetrainResponse(
+                success=False,
+                message="No training data available. Upload images via POST /upload/retrain_data first."
+            )
+    else:
+        # Check if directories have data
+        train_classes = list(train_dir.iterdir()) if train_dir.exists() else []
+        val_classes = list(val_dir.iterdir()) if val_dir.exists() else []
         
-        return RetrainResponse(
-            success=False,
-            message=message
-        )
+        if not train_classes or not val_classes:
+            if retrain_count > 0:
+                use_retrain_data = True
+            else:
+                return RetrainResponse(
+                    success=False,
+                    message="Training directories are empty. Upload images via POST /upload/retrain_data first."
+                )
     
-    # Check if directories have data
-    train_classes = list(train_dir.iterdir()) if train_dir.exists() else []
-    val_classes = list(val_dir.iterdir()) if val_dir.exists() else []
-    
-    if not train_classes or not val_classes:
-        return RetrainResponse(
-            success=False,
-            message="Training data directories are empty. Add images to train/ and val/ directories first."
-        )
+    # Limit epochs for cloud deployment
+    max_epochs = min(request.epochs, 5)  # Cap at 5 epochs on Railway
     
     # Start retraining in background
     background_tasks.add_task(
         run_retraining,
-        epochs=request.epochs,
+        epochs=max_epochs,
         learning_rate=request.learning_rate,
-        model_type=request.model_type
+        model_type=request.model_type,
+        use_retrain_data=use_retrain_data
     )
+    
+    mode = "fine-tuning on uploaded images" if use_retrain_data else "full training"
     
     return RetrainResponse(
         success=True,
-        message="Retraining started. Monitor progress at /status endpoint.",
+        message=f"Retraining started ({mode}, {max_epochs} epochs, {retrain_count} images in {len(retrain_classes)} classes). Monitor progress at /status endpoint.",
         task_id=f"retrain_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
 
