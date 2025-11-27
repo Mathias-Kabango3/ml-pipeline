@@ -2,8 +2,8 @@
 # ======================================================
 
 # Core ML/DL frameworks
-# Pin TensorFlow to 2.15 for .keras format compatibility
-tensorflow==2.15.0
+# Use TensorFlow 2.16+ for Keras 3 compatibility
+tensorflow>=2.16.0
 tensorflow-hub>=0.14.0
 
 # Data processing and analysis
