@@ -708,11 +708,17 @@ async def debug_info():
     if models_exists:
         model_files = [{"name": f.name, "size": f.stat().st_size} for f in MODELS_DIR.iterdir()]
     
+    # List files in data directory
+    data_files = []
+    if data_exists:
+        data_files = [f.name for f in DATA_DIR.iterdir() if f.is_file()]
+    
     # Check environment - IGNORE env var, always use the correct URL
     model_url = HUGGINGFACE_MODEL_URL  # Always use the hardcoded correct URL
     
     # Try to load model now
     load_error = None
+    model_load_error = None
     try:
         test_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
         # Check if file exists and is valid (>1MB)
@@ -723,6 +729,25 @@ async def debug_info():
         if not test_path.exists():
             # Try downloading
             download_model_from_url(model_url, test_path)
+        
+        # Try to actually load the model
+        if test_path.exists() and app_state.model is None:
+            try:
+                logger.info("Attempting to load model...")
+                loaded_model = keras.models.load_model(str(test_path))
+                app_state.model = loaded_model
+                app_state.model_loaded_at = datetime.now()
+                logger.info("Model loaded successfully!")
+                
+                # Load class indices
+                class_indices_path = DATA_DIR / "index_to_class.json"
+                if class_indices_path.exists():
+                    with open(class_indices_path, 'r') as f:
+                        app_state.class_indices = {int(k): v for k, v in json.load(f).items()}
+                    logger.info(f"Loaded {len(app_state.class_indices)} classes")
+            except Exception as model_err:
+                model_load_error = str(model_err)
+                logger.error(f"Failed to load model: {model_err}")
     except Exception as e:
         load_error = str(e)
     
@@ -732,9 +757,11 @@ async def debug_info():
         "models_dir_exists": models_exists,
         "data_dir_exists": data_exists,
         "model_files": model_files,
+        "data_files": data_files,
         "model_url": model_url,
         "model_loaded": app_state.model is not None,
         "load_error": load_error,
+        "model_load_error": model_load_error,
         "class_indices_count": len(app_state.class_indices),
         "huggingface_url": HUGGINGFACE_MODEL_URL
     }
