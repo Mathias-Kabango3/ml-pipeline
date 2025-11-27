@@ -108,7 +108,8 @@ class DatasetStatsResponse(BaseModel):
 
 # Helper functions
 # Hugging Face model URL (direct download link)
-HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_resnet50_best.keras"
+# Use the checkpoint file which is the actual trained model (~97MB)
+HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_resnet50_checkpoint_01.keras"
 
 
 def download_model_from_url(url: str, dest_path: Path) -> bool:
