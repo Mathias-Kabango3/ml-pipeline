@@ -573,6 +573,7 @@ async def trigger_retrain(
     - **model_type**: Model type to train (default: resnet50)
     
     Retraining runs in background and can be monitored via /status endpoint.
+    Note: Requires train and val data directories. Not available on cloud deployments.
     """
     if app_state.is_retraining:
         return RetrainResponse(
@@ -580,8 +581,25 @@ async def trigger_retrain(
             message="Retraining already in progress. Check /status for progress."
         )
     
-    # Check for retrain data
-    retrain_data_exists = RETRAIN_DIR.exists() and any(RETRAIN_DIR.iterdir())
+    # Check if training data exists
+    train_dir = DATA_DIR / "train"
+    val_dir = DATA_DIR / "val"
+    
+    if not train_dir.exists() or not val_dir.exists():
+        return RetrainResponse(
+            success=False,
+            message="Training data not available. Retraining requires train/ and val/ directories with images. This feature is only available for local development."
+        )
+    
+    # Check if directories have data
+    train_classes = list(train_dir.iterdir()) if train_dir.exists() else []
+    val_classes = list(val_dir.iterdir()) if val_dir.exists() else []
+    
+    if not train_classes or not val_classes:
+        return RetrainResponse(
+            success=False,
+            message="Training data directories are empty. Add images to train/ and val/ directories first."
+        )
     
     # Start retraining in background
     background_tasks.add_task(

@@ -36,8 +36,8 @@ TRAIN_DIR = DATA_DIR / "train"
 VAL_DIR = DATA_DIR / "val"
 RETRAIN_DIR = DATA_DIR / "retrain_data"
 
-# Configuration
-IMG_SIZE = (224, 224)
+# Configuration - must match deployed model
+IMG_SIZE = (190, 190)  # Model input size
 BATCH_SIZE = 32
 DEFAULT_EPOCHS = 10
 DEFAULT_LEARNING_RATE = 0.0001
@@ -181,10 +181,11 @@ def merge_retrain_data(clear_after: bool = True) -> Dict:
 def create_data_generators(batch_size: int = BATCH_SIZE):
     """Create data generators for training and validation."""
     from tensorflow.keras.preprocessing.image import ImageDataGenerator
+    from tensorflow.keras.applications.resnet50 import preprocess_input
     
-    # Training data generator with augmentation
+    # Training data generator with augmentation and ResNet50 preprocessing
     train_datagen = ImageDataGenerator(
-        rescale=1./255,
+        preprocessing_function=preprocess_input,
         rotation_range=20,
         width_shift_range=0.1,
         height_shift_range=0.1,
@@ -194,8 +195,8 @@ def create_data_generators(batch_size: int = BATCH_SIZE):
         fill_mode='nearest'
     )
     
-    # Validation data generator - only rescale
-    val_datagen = ImageDataGenerator(rescale=1./255)
+    # Validation data generator - only ResNet50 preprocessing
+    val_datagen = ImageDataGenerator(preprocessing_function=preprocess_input)
     
     train_generator = train_datagen.flow_from_directory(
         TRAIN_DIR,
