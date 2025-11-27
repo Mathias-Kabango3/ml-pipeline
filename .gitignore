@@ -51,6 +51,7 @@ models/*.h5
 
 # Data files (too large for Git)
 plantvillagedataset/
+plantvillagedataset.zip
 data/train/
 data/val/
 data/test/
