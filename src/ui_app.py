@@ -623,6 +623,57 @@ elif page == "Training Metrics":
 elif page == "Retrain":
     st.markdown('<h1 class="main-header">Model Retraining</h1>', unsafe_allow_html=True)
     
+    # Cloud deployment notice
+    st.info("""
+    **Cloud Deployment Note:** Retraining on Railway is disabled (no GPU available).
+    
+    **Workflow:** Upload images here → Download ZIP → Retrain on Kaggle/Colab → Upload model to Hugging Face → Reload model
+    """)
+    
+    # Check retrain data stats
+    try:
+        retrain_stats = requests.get(f"{API_URL}/retrain_data/stats", timeout=5).json()
+    except:
+        retrain_stats = {"total_images": 0, "classes": {}}
+    
+    # Show retrain data status
+    if retrain_stats.get("total_images", 0) > 0:
+        st.success(f"**{retrain_stats['total_images']} images** collected for retraining")
+        
+        with st.expander("View collected images by class"):
+            for class_name, count in retrain_stats.get("classes", {}).items():
+                st.write(f"- {class_name}: {count} images")
+        
+        col_dl, col_clear, col_reload = st.columns(3)
+        
+        with col_dl:
+            st.markdown(f"[Download ZIP]({API_URL}/retrain_data/download)")
+        
+        with col_clear:
+            if st.button("Clear Data"):
+                try:
+                    resp = requests.delete(f"{API_URL}/retrain_data/clear", timeout=10)
+                    if resp.json().get("success"):
+                        st.success("Retrain data cleared!")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Failed to clear: {e}")
+        
+        with col_reload:
+            if st.button("Reload Model"):
+                with st.spinner("Reloading model from Hugging Face..."):
+                    try:
+                        resp = requests.post(f"{API_URL}/model/reload", timeout=120)
+                        result = resp.json()
+                        if result.get("success"):
+                            st.success("Model reloaded successfully!")
+                        else:
+                            st.error(result.get("message", "Failed to reload"))
+                    except Exception as e:
+                        st.error(f"Failed to reload: {e}")
+        
+        st.markdown("---")
+    
     # Retraining status
     if api_status.get("is_retraining"):
         st.warning("Retraining in progress...")
@@ -709,7 +760,9 @@ elif page == "Retrain":
                         st.success("Retraining started! Monitor progress on the dashboard.")
                         st.rerun()
                     else:
-                        st.error(f"Failed to start retraining: {result.get('error', 'Unknown error')}")
+                        # Show the message from the API (could be info about cloud limitations)
+                        error_msg = result.get("message") or result.get("error", "Unknown error")
+                        st.warning(error_msg)
 
 
 elif page == "Dataset":
