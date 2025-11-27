@@ -22,7 +22,7 @@ import plotly.graph_objects as go
 from PIL import Image
 
 # Configuration
-API_URL = os.environ.get("API_URL", "https://ml-pipeline-tc1h.onrender.com")
+API_URL = os.environ.get("API_URL", "https://ml-pipeline-production-be57.up.railway.app")
 BASE_DIR = Path(__file__).parent.parent
 MODELS_DIR = BASE_DIR / "models"
 DATA_DIR = BASE_DIR / "data"
@@ -210,12 +210,12 @@ def load_class_distribution() -> Dict:
 
 
 # Sidebar
-st.sidebar.markdown("# 🌿 Plant Disease AI")
+st.sidebar.markdown("# Plant Disease AI")
 st.sidebar.markdown("---")
 
 page = st.sidebar.radio(
     "Navigation",
-    ["📊 Dashboard", "🔍 Predict", "📈 Training Metrics", "🔄 Retrain", "📁 Dataset"]
+    ["Dashboard", "Predict", "Training Metrics", "Retrain", "Dataset"]
 )
 
 st.sidebar.markdown("---")
@@ -224,24 +224,24 @@ st.sidebar.markdown("### API Status")
 # Check API status
 api_status = get_api_status()
 if api_status.get("status") == "error":
-    st.sidebar.markdown("🔴 **API Offline**")
-    st.sidebar.markdown(f"Error: {api_status.get('error', 'Unknown')[:50]}...")
+    st.sidebar.error("API Offline")
+    st.sidebar.caption(f"Error: {api_status.get('error', 'Unknown')[:50]}...")
 elif api_status.get("model_loaded"):
-    st.sidebar.markdown("🟢 **API Online**")
-    st.sidebar.markdown(f"Model: Loaded")
+    st.sidebar.success("API Online")
+    st.sidebar.caption("Model: Loaded")
     if api_status.get("uptime_seconds"):
         uptime = api_status["uptime_seconds"]
         hours = int(uptime // 3600)
         minutes = int((uptime % 3600) // 60)
-        st.sidebar.markdown(f"Uptime: {hours}h {minutes}m")
+        st.sidebar.caption(f"Uptime: {hours}h {minutes}m")
 else:
-    st.sidebar.markdown("🟡 **API Degraded**")
-    st.sidebar.markdown("Model: Not loaded")
+    st.sidebar.warning("API Degraded")
+    st.sidebar.caption("Model: Not loaded")
 
 
 # Main content based on selected page
-if page == "📊 Dashboard":
-    st.markdown('<h1 class="main-header">🌿 Plant Disease Classification Dashboard</h1>', unsafe_allow_html=True)
+if page == "Dashboard":
+    st.markdown('<h1 class="main-header">Plant Disease Classification Dashboard</h1>', unsafe_allow_html=True)
     
     # Load local data for fallback
     split_info_path = DATA_DIR / "split_info.json"
@@ -284,13 +284,13 @@ if page == "📊 Dashboard":
     
     # Show API connection help if offline
     if api_status.get("status") == "error":
-        st.warning(f"⚠️ API is not running. Start it with: `python src/api.py`")
+        st.warning("API is not running. Start it with: `python src/api.py`")
     
     st.markdown("---")
     
     # Training status
     if api_status.get("is_retraining"):
-        st.warning("🔄 **Retraining in progress...**")
+        st.warning("Retraining in progress...")
         progress = api_status.get("retrain_progress", 0)
         st.progress(progress)
         st.info(api_status.get("retrain_status", ""))
@@ -299,7 +299,7 @@ if page == "📊 Dashboard":
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Class Distribution")
+        st.subheader("Class Distribution")
         class_dist = load_class_distribution()
         
         # If no class distribution, try to load class names from split_info
@@ -326,7 +326,7 @@ if page == "📊 Dashboard":
             st.info("No dataset loaded yet. Run data pipeline first.")
     
     with col2:
-        st.subheader("📈 Model Performance")
+        st.subheader("Model Performance")
         
         # First try experiments log
         experiments_df = load_experiments_log()
@@ -365,8 +365,8 @@ if page == "📊 Dashboard":
                 st.info("No evaluation results available. Train and evaluate a model first.")
 
 
-elif page == "🔍 Predict":
-    st.markdown('<h1 class="main-header">🔍 Plant Disease Prediction</h1>', unsafe_allow_html=True)
+elif page == "Predict":
+    st.markdown('<h1 class="main-header">Plant Disease Prediction</h1>', unsafe_allow_html=True)
     
     col1, col2 = st.columns([1, 1])
     
@@ -386,7 +386,7 @@ elif page == "🔍 Predict":
         st.subheader("Prediction Results")
         
         if uploaded_file is not None:
-            if st.button("🔍 Predict Disease", use_container_width=True):
+            if st.button("Predict Disease", use_container_width=True):
                 with st.spinner("Analyzing image..."):
                     # Reset file position
                     uploaded_file.seek(0)
@@ -415,14 +415,14 @@ elif page == "🔍 Predict":
                     else:
                         st.error(f"Prediction failed: {result.get('error', 'Unknown error')}")
         else:
-            st.info("👆 Upload an image to get started")
+            st.info("Upload an image to get started")
 
 
-elif page == "📈 Training Metrics":
-    st.markdown('<h1 class="main-header">📈 Training Metrics & Visualizations</h1>', unsafe_allow_html=True)
+elif page == "Training Metrics":
+    st.markdown('<h1 class="main-header">Training Metrics & Visualizations</h1>', unsafe_allow_html=True)
     
     # Model Performance Images Section
-    st.subheader("📊 Model Performance (Training & Validation)")
+    st.subheader("Model Performance (Training & Validation)")
     
     # Load experiments to get accuracy info
     experiments_df = load_experiments_log()
@@ -437,7 +437,7 @@ elif page == "📈 Training Metrics":
         
         with col1:
             st.metric(
-                label="🏆 Best Validation Accuracy",
+                label="Best Validation Accuracy",
                 value=f"{best_acc:.2f}%",
                 delta=f"{best_exp['model']} - {best_exp['variant']}"
             )
@@ -445,19 +445,19 @@ elif page == "📈 Training Metrics":
         with col2:
             # Performance rating based on accuracy
             if best_acc >= 98:
-                rating = "🌟 Excellent"
+                rating = "Excellent"
                 color = "green"
             elif best_acc >= 95:
-                rating = "✅ Very Good"
+                rating = "Very Good"
                 color = "green"
             elif best_acc >= 90:
-                rating = "👍 Good"
+                rating = "Good"
                 color = "orange"
             elif best_acc >= 80:
-                rating = "⚠️ Fair"
+                rating = "Fair"
                 color = "orange"
             else:
-                rating = "❌ Needs Improvement"
+                rating = "Needs Improvement"
                 color = "red"
             
             st.markdown(f"""
@@ -470,7 +470,7 @@ elif page == "📈 Training Metrics":
         with col3:
             val_loss = best_exp['val_loss']
             st.metric(
-                label="📉 Best Validation Loss",
+                label="Best Validation Loss",
                 value=f"{val_loss:.4f}",
                 delta=f"Train time: {best_exp['train_time_s']/60:.1f} min"
             )
@@ -502,7 +502,7 @@ elif page == "📈 Training Metrics":
     st.markdown("---")
     
     # Experiments Log from CSV
-    st.subheader("📋 Experiments Log")
+    st.subheader("Experiments Log")
     experiments_df = load_experiments_log()
     
     if experiments_df is not None and not experiments_df.empty:
@@ -552,7 +552,7 @@ elif page == "📈 Training Metrics":
             st.plotly_chart(fig, use_container_width=True)
         
         # Training time comparison
-        st.subheader("⏱️ Training Time Comparison")
+        st.subheader("Training Time Comparison")
         experiments_df['train_time_min'] = experiments_df['train_time_s'] / 60
         fig = px.bar(
             experiments_df,
@@ -566,7 +566,7 @@ elif page == "📈 Training Metrics":
         st.plotly_chart(fig, use_container_width=True)
         
         # Full experiments table
-        st.subheader("📊 All Experiments")
+        st.subheader("All Experiments")
         display_df = experiments_df[['exp_id', 'model', 'variant', 'val_acc', 'val_loss', 'train_time_s', 'notes']].copy()
         display_df['val_acc'] = display_df['val_acc'].apply(lambda x: f"{x*100:.2f}%")
         display_df['val_loss'] = display_df['val_loss'].apply(lambda x: f"{x:.4f}")
@@ -620,12 +620,12 @@ elif page == "📈 Training Metrics":
         st.info("No evaluation metrics available. Evaluate a model first.")
 
 
-elif page == "🔄 Retrain":
-    st.markdown('<h1 class="main-header">🔄 Model Retraining</h1>', unsafe_allow_html=True)
+elif page == "Retrain":
+    st.markdown('<h1 class="main-header">Model Retraining</h1>', unsafe_allow_html=True)
     
     # Retraining status
     if api_status.get("is_retraining"):
-        st.warning("🔄 **Retraining in progress...**")
+        st.warning("Retraining in progress...")
         progress = api_status.get("retrain_progress", 0)
         st.progress(progress)
         st.info(api_status.get("retrain_status", ""))
@@ -634,7 +634,7 @@ elif page == "🔄 Retrain":
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📤 Upload Training Data")
+        st.subheader("Upload Training Data")
         st.markdown("Upload new images for retraining. Images will be added to the training set.")
         
         # Get available classes
@@ -665,7 +665,7 @@ elif page == "🔄 Retrain":
         )
         
         if uploaded_files and final_class:
-            if st.button("📤 Upload for Retraining", use_container_width=True):
+            if st.button("Upload for Retraining", use_container_width=True):
                 with st.spinner("Uploading images..."):
                     result = upload_retrain_images(uploaded_files, final_class)
                     if result.get("success"):
@@ -674,7 +674,7 @@ elif page == "🔄 Retrain":
                         st.error(f"Upload failed: {result.get('error', 'Unknown error')}")
     
     with col2:
-        st.subheader("⚙️ Trigger Retraining")
+        st.subheader("Trigger Retraining")
         st.markdown("Configure and start model retraining with new data.")
         
         model_type = st.selectbox(
@@ -699,7 +699,7 @@ elif page == "🔄 Retrain":
             help="Learning rate for training"
         )
         
-        if st.button("🚀 Start Retraining", use_container_width=True, type="primary"):
+        if st.button("Start Retraining", use_container_width=True, type="primary"):
             if api_status.get("is_retraining"):
                 st.warning("Retraining already in progress!")
             else:
@@ -712,8 +712,8 @@ elif page == "🔄 Retrain":
                         st.error(f"Failed to start retraining: {result.get('error', 'Unknown error')}")
 
 
-elif page == "📁 Dataset":
-    st.markdown('<h1 class="main-header">📁 Dataset Statistics</h1>', unsafe_allow_html=True)
+elif page == "Dataset":
+    st.markdown('<h1 class="main-header">Dataset Statistics</h1>', unsafe_allow_html=True)
     
     # Dataset overview
     st.subheader("Dataset Overview")
@@ -811,7 +811,7 @@ elif page == "📁 Dataset":
     else:
         st.info("No dataset available. Run the data pipeline to split the dataset first.")
         
-        if st.button("📥 Initialize Dataset"):
+        if st.button("Initialize Dataset"):
             st.info("Run the following command to initialize the dataset:")
             st.code("python src/data_pipeline.py", language="bash")
 
