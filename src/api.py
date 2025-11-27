@@ -125,8 +125,11 @@ class DatasetStatsResponse(BaseModel):
 
 # Helper functions
 # Hugging Face model URL (direct download link)
-# Use H5 format for better compatibility across TensorFlow versions
-HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_resnet50_checkpoint_01.h5"
+# Use .keras format for Keras 3 compatibility
+HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_model_v2.keras"
+
+# Model configuration - must match the model architecture
+MODEL_INPUT_SIZE = (190, 190)  # Input size used during training
 
 
 def download_model_from_url(url: str, dest_path: Path) -> bool:
@@ -186,17 +189,17 @@ def load_model_and_classes():
     try:
         # Always use the hardcoded HuggingFace URL (ignore environment variable)
         model_url = HUGGINGFACE_MODEL_URL
-        default_model_path = MODELS_DIR / "plant_disease_resnet50_checkpoint_01.h5"
+        default_model_path = MODELS_DIR / "plant_disease_model_v2.keras"
         
         # Clean up any old/corrupted model files
         if MODELS_DIR.exists():
             for old_file in MODELS_DIR.glob("*.h5"):
-                if old_file.name != "plant_disease_resnet50_checkpoint_01.h5":
-                    logger.info(f"Removing old model file: {old_file}")
-                    old_file.unlink()
-            for old_file in MODELS_DIR.glob("*.keras"):
                 logger.info(f"Removing old model file: {old_file}")
                 old_file.unlink()
+            for old_file in MODELS_DIR.glob("*.keras"):
+                if old_file.name != "plant_disease_model_v2.keras":
+                    logger.info(f"Removing old model file: {old_file}")
+                    old_file.unlink()
         
         # Check if existing file is corrupted (too small)
         if default_model_path.exists():
@@ -221,10 +224,10 @@ def load_model_and_classes():
         
         logger.info(f"Found model: {model_path}")
         logger.info(f"Loading model from {model_path}")
-        # Load model - H5 format with safe_mode=False for Lambda layers
+        # Load model - .keras format (no Lambda layer, so safe_mode not needed)
         try:
-            model = keras.models.load_model(str(model_path), compile=False, safe_mode=False)
-            logger.info("Model loaded successfully")
+            model = keras.models.load_model(str(model_path), compile=False)
+            logger.info(f"Model loaded successfully - Input shape: {model.input_shape}, Output shape: {model.output_shape}")
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             return None, {}
@@ -260,8 +263,11 @@ def load_model_and_classes():
         return None, {}
 
 
-def preprocess_image(image_bytes: bytes, img_size: tuple = (224, 224)) -> np.ndarray:
-    """Preprocess image for model inference."""
+def preprocess_image(image_bytes: bytes, img_size: tuple = None) -> np.ndarray:
+    """Preprocess image for model inference with ResNet50 preprocessing."""
+    if img_size is None:
+        img_size = MODEL_INPUT_SIZE
+    
     # Open and resize image
     image = Image.open(io.BytesIO(image_bytes))
     
@@ -269,11 +275,15 @@ def preprocess_image(image_bytes: bytes, img_size: tuple = (224, 224)) -> np.nda
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    # Resize
+    # Resize to model's expected input size
     image = image.resize(img_size, Image.Resampling.LANCZOS)
     
-    # Convert to array and normalize
-    img_array = np.array(image, dtype=np.float32) / 255.0
+    # Convert to array
+    img_array = np.array(image, dtype=np.float32)
+    
+    # Apply ResNet50 preprocessing (since we removed the Lambda layer from the model)
+    # This converts RGB to BGR and zero-centers each color channel
+    img_array = tf.keras.applications.resnet50.preprocess_input(img_array)
     
     # Add batch dimension
     img_array = np.expand_dims(img_array, axis=0)
