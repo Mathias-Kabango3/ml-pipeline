@@ -70,6 +70,7 @@ class AppState:
     is_retraining: bool = False
     retrain_progress: float = 0.0
     retrain_status: str = ""
+    retrain_cancelled: bool = False  # Flag to cancel retraining
     prediction_count: int = 0
     total_inference_time: float = 0.0
     
@@ -427,6 +428,10 @@ async def run_lightweight_retrain(epochs: int = 2, learning_rate: float = 0.0001
         y_data = []
         
         for i, (img_path, label) in enumerate(zip(all_images, all_labels)):
+            # Check for cancellation
+            if app_state.retrain_cancelled:
+                return {"success": False, "error": "Training cancelled by user."}
+            
             try:
                 with open(img_path, 'rb') as f:
                     img_bytes = f.read()
@@ -476,12 +481,23 @@ async def run_lightweight_retrain(epochs: int = 2, learning_rate: float = 0.0001
         # Train with progress callback
         class ProgressCallback(tf.keras.callbacks.Callback):
             def on_epoch_end(self, epoch, logs=None):
+                # Check for cancellation
+                if app_state.retrain_cancelled:
+                    self.model.stop_training = True
+                    app_state.retrain_status = "Training cancelled by user."
+                    return
+                    
                 progress = 0.5 + (0.4 * (epoch + 1) / epochs)
-                acc = logs.get('accuracy', 0) * 100
-                loss = logs.get('loss', 0)
+                acc = logs.get('accuracy', 0) * 100 if logs else 0
+                loss = logs.get('loss', 0) if logs else 0
                 app_state.retrain_status = f"Epoch {epoch + 1}/{epochs} - Acc: {acc:.1f}%, Loss: {loss:.4f}"
                 app_state.retrain_progress = progress
                 logger.info(f"Epoch {epoch + 1}/{epochs} - acc: {acc:.1f}%, loss: {loss:.4f}")
+            
+            def on_batch_end(self, batch, logs=None):
+                # Check for cancellation between batches
+                if app_state.retrain_cancelled:
+                    self.model.stop_training = True
         
         # Run training in executor to not block
         loop = asyncio.get_event_loop()
@@ -498,6 +514,11 @@ async def run_lightweight_retrain(epochs: int = 2, learning_rate: float = 0.0001
             return history
         
         history = await loop.run_in_executor(None, train_model)
+        
+        # Check if cancelled
+        if app_state.retrain_cancelled:
+            app_state.retrain_status = "Training cancelled by user."
+            return {"success": False, "error": "Training cancelled by user."}
         
         app_state.retrain_status = "Saving model..."
         app_state.retrain_progress = 0.95
@@ -828,6 +849,9 @@ async def trigger_retrain(
     # Limit epochs for cloud deployment
     max_epochs = min(request.epochs, 5)  # Cap at 5 epochs on Railway
     
+    # Reset cancel flag
+    app_state.retrain_cancelled = False
+    
     # Start retraining in background
     background_tasks.add_task(
         run_retraining,
@@ -844,6 +868,29 @@ async def trigger_retrain(
         message=f"Retraining started ({mode}, {max_epochs} epochs, {retrain_count} images in {len(retrain_classes)} classes). Monitor progress at /status endpoint.",
         task_id=f"retrain_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     )
+
+
+@app.post("/retrain/cancel")
+async def cancel_retrain():
+    """
+    Cancel an ongoing retraining process.
+    
+    Returns immediately but the actual cancellation may take a moment
+    as it waits for the current batch/epoch to complete.
+    """
+    if not app_state.is_retraining:
+        return {
+            "success": False,
+            "message": "No retraining in progress."
+        }
+    
+    app_state.retrain_cancelled = True
+    app_state.retrain_status = "Cancellation requested... waiting for current operation to complete."
+    
+    return {
+        "success": True,
+        "message": "Cancellation requested. Retraining will stop after the current batch completes."
+    }
 
 
 @app.post("/upload/retrain_data")
