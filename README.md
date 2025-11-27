@@ -1,41 +1,97 @@
-# 🌿 Plant Disease Classification Pipeline
+# Plant Disease Classification Pipeline
 
 A complete MLOps pipeline for plant disease classification using deep learning with TensorFlow/Keras. This project includes data preprocessing, model training, evaluation, API deployment, and a web-based dashboard for monitoring and retraining.
 
-## 📋 Table of Contents
+## Demo Video
+
+[![Plant Disease Classification Demo](https://img.youtube.com/vi/xxB2_VbbX1M/0.jpg)](https://youtu.be/xxB2_VbbX1M)
+
+**Watch the full demo:** [https://youtu.be/xxB2_VbbX1M](https://youtu.be/xxB2_VbbX1M)
+
+## Live Deployment
+
+- **API (Railway):** https://ml-pipeline-production-be57.up.railway.app
+- **UI Dashboard (Streamlit Cloud):** https://ml-pipeline-mathias.streamlit.app
+- **Model (Hugging Face):** https://huggingface.co/mathiaskabango/plantvillagev2
+
+## Table of Contents
 
 - [Features](#features)
 - [Project Structure](#project-structure)
+- [Rubric Compliance](#rubric-compliance)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
 - [API Documentation](#api-documentation)
 - [Deployment](#deployment)
 - [Load Testing](#load-testing)
-- [Contributing](#contributing)
 
-## ✨ Features
+## Features
 
-- **Deep Learning Model**: Transfer learning with ResNet50, MobileNetV2, or EfficientNet
+- **Deep Learning Model**: Transfer learning with ResNet50 (pre-trained on ImageNet)
 - **Data Pipeline**: Automated data loading, augmentation, and train/val/test splitting
 - **Comprehensive Evaluation**: Accuracy, Precision, Recall, F1-Score, Confusion Matrix, ROC-AUC
 - **REST API**: FastAPI endpoints for prediction, retraining, and status monitoring
 - **Web Dashboard**: Streamlit UI for visualization and model management
-- **Automated Retraining**: Watch folder for new data and automatic model updates
+- **Automated Retraining**: Upload new images and fine-tune the model
 - **MLOps Integration**: MLflow and TensorBoard for experiment tracking
 - **Containerization**: Docker and Docker Compose for easy deployment
-- **Load Testing**: Locust for performance testing and scaling analysis
+- **Load Testing**: Locust for performance testing
 
-## 📁 Project Structure
+## Rubric Compliance
+
+### 1. Retraining Process (10 pts)
+
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| Data File Uploading | Done | `POST /upload/retrain_data` - Upload images with class labels |
+| Saving to Database | Done | Images saved to `data/retrain_data/{class_name}/` |
+| Data Preprocessing | Done | ResNet50 preprocessing, image resizing (190x190), augmentation |
+| Retraining with Pre-trained Model | Done | Fine-tunes existing model (freezes early layers, trains last 10) |
+
+**Files:** `src/api.py` (endpoints), `src/retrain.py` (training logic), `src/ui_app.py` (UI)
+
+### 2. Prediction Process (10 pts)
+
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| Insert Data Point for Prediction | Done | Upload image via UI or `POST /predict` API |
+| Display Correct Prediction | Done | Returns class name with confidence score |
+
+**Files:** `src/api.py` (`/predict` endpoint), `src/ui_app.py` (Prediction page)
+
+### 3. Evaluation of Models (10 pts)
+
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| Clear Preprocessing Steps | Done | Data augmentation, normalization, train/val/test split |
+| Optimization Techniques | Done | Early stopping, learning rate scheduling, pre-trained ResNet50 |
+| Evaluation Metrics (4+) | Done | Accuracy, Loss, Precision, Recall, F1-Score, Confusion Matrix |
+
+**Files:** `notebook/plant_disease_classification.ipynb`, `src/evaluate_model.py`
+
+### 4. Deployment Package (10 pts)
+
+| Requirement | Status | Implementation |
+|-------------|--------|----------------|
+| UI (Web App) | Done | Streamlit dashboard with full functionality |
+| Public URL | Done | Railway API + Streamlit Cloud UI |
+| Data Insights/Visualizations | Done | Class distribution, training metrics, confusion matrix |
+
+**Live URLs:**
+- API: https://ml-pipeline-production-be57.up.railway.app
+- UI: https://ml-pipeline-mathias.streamlit.app
+
+## Project Structure
 
 ```
 ml-pipeline/
 ├── README.md
 ├── requirements.txt
-├── Dockerfile
+├── Dockerfile.railway
 ├── docker-compose.yml
 ├── notebook/
-│   └── plant_disease_classification.ipynb
+│   └── plant_disease_classification.ipynb  # Model training notebook
 ├── src/
 │   ├── data_pipeline.py       # Data loading and preprocessing
 │   ├── model_pipeline.py      # Model creation and training
@@ -43,36 +99,32 @@ ml-pipeline/
 │   ├── api.py                 # FastAPI application
 │   ├── ui_app.py              # Streamlit dashboard
 │   ├── retrain.py             # Automated retraining script
-│   ├── locustfile.py          # Load testing
-│   ├── model.py               # Model utilities
-│   ├── prediction.py          # Prediction helpers
-│   └── preprocessing.py       # Image preprocessing
+│   └── locustfile.py          # Load testing
 ├── data/
 │   ├── train/                 # Training images
 │   ├── val/                   # Validation images
 │   ├── test/                  # Test images
-│   └── retrain_data/          # New data for retraining
+│   ├── retrain_data/          # New data for retraining
+│   └── index_to_class.json    # Class label mapping
 ├── models/
-│   └── *.keras                # Saved model files
+│   └── plant_disease_model_v2.keras  # Trained model
 ├── logs/                      # TensorBoard logs
-├── mlruns/                    # MLflow tracking
-└── plantvillagedataset/       # Original dataset
+└── mlruns/                    # MLflow tracking
 ```
 
-## 🚀 Installation
+## Installation
 
 ### Prerequisites
 
 - Python 3.10+
 - pip or conda
 - Docker (optional, for containerized deployment)
-- CUDA-enabled GPU (optional, for faster training)
 
 ### Local Installation
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/Mathias-Kabango3/ml-pipeline.git
 cd ml-pipeline
 
 # Create virtual environment
@@ -93,7 +145,7 @@ docker-compose build
 docker-compose up -d
 ```
 
-## 🏃 Quick Start
+## Quick Start
 
 ### 1. Prepare the Dataset
 
