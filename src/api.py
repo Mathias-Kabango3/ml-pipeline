@@ -213,7 +213,8 @@ def load_model_and_classes():
             return None, {}
         
         logger.info(f"Loading model from {model_path}")
-        model = keras.models.load_model(str(model_path))
+        # safe_mode=False needed because model contains Lambda layers
+        model = keras.models.load_model(str(model_path), safe_mode=False)
         
         # Load class indices
         class_indices_path = DATA_DIR / "index_to_class.json"
@@ -734,7 +735,8 @@ async def debug_info():
         if test_path.exists() and app_state.model is None:
             try:
                 logger.info("Attempting to load model...")
-                loaded_model = keras.models.load_model(str(test_path))
+                # safe_mode=False needed because model contains Lambda layers
+                loaded_model = keras.models.load_model(str(test_path), safe_mode=False)
                 app_state.model = loaded_model
                 app_state.model_loaded_at = datetime.now()
                 logger.info("Model loaded successfully!")
