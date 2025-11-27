@@ -126,7 +126,7 @@ class DatasetStatsResponse(BaseModel):
 # Helper functions
 # Hugging Face model URL (direct download link)
 # Use .keras format for Keras 3 compatibility
-HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_model_v2.keras"
+HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillagev2/resolve/main/plant_disease_model_v2.keras"
 
 # Model configuration - must match the model architecture
 MODEL_INPUT_SIZE = (190, 190)  # Input size used during training
