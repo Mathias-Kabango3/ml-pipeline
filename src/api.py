@@ -685,6 +685,101 @@ async def upload_retrain_data(
     }
 
 
+@app.post("/upload/retrain_zip")
+async def upload_retrain_zip(
+    file: UploadFile = File(..., description="ZIP file containing training images organized in class folders")
+):
+    """
+    Upload a ZIP file with training images.
+    
+    The ZIP should be organized as:
+    ```
+    retrain_data.zip
+    ├── Tomato___Late_blight/
+    │   ├── image1.jpg
+    │   └── image2.jpg
+    ├── Apple___healthy/
+    │   └── image3.jpg
+    └── ...
+    ```
+    
+    Each folder name becomes the class label.
+    """
+    import zipfile
+    import tempfile
+    
+    if not file.filename or not file.filename.endswith('.zip'):
+        raise HTTPException(status_code=400, detail="File must be a ZIP archive")
+    
+    # Save uploaded ZIP to temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+    
+    extracted_count = 0
+    classes_found = {}
+    
+    try:
+        with zipfile.ZipFile(tmp_path, 'r') as zip_ref:
+            for zip_info in zip_ref.infolist():
+                # Skip directories and hidden files
+                if zip_info.is_dir() or zip_info.filename.startswith('__') or '/.DS_Store' in zip_info.filename:
+                    continue
+                
+                # Parse path: folder/class_name/image.jpg or class_name/image.jpg
+                parts = zip_info.filename.split('/')
+                
+                # Find the class name and filename
+                if len(parts) >= 2:
+                    # Could be retrain_data/class_name/file.jpg or class_name/file.jpg
+                    if parts[0] in ['retrain_data', 'train', 'data']:
+                        class_name = parts[1]
+                        img_filename = parts[-1]
+                    else:
+                        class_name = parts[0]
+                        img_filename = parts[-1]
+                else:
+                    continue
+                
+                # Check if it's an image
+                if not img_filename.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                    continue
+                
+                # Create class directory
+                class_dir = RETRAIN_DIR / class_name
+                class_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Extract with unique name
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                ext = Path(img_filename).suffix
+                new_filename = f"{timestamp}{ext}"
+                dest_path = class_dir / new_filename
+                
+                # Extract file
+                with zip_ref.open(zip_info) as src, open(dest_path, 'wb') as dst:
+                    dst.write(src.read())
+                
+                extracted_count += 1
+                classes_found[class_name] = classes_found.get(class_name, 0) + 1
+        
+        return {
+            "success": True,
+            "message": f"Extracted {extracted_count} images from ZIP",
+            "classes": classes_found,
+            "total_images": extracted_count
+        }
+        
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid ZIP file")
+    except Exception as e:
+        logger.error(f"Error extracting ZIP: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to extract ZIP: {str(e)}")
+    finally:
+        # Clean up temp file
+        Path(tmp_path).unlink(missing_ok=True)
+
+
 @app.get("/retrain_data/stats")
 async def get_retrain_data_stats():
     """

@@ -686,38 +686,73 @@ elif page == "Retrain":
     
     with col1:
         st.subheader("Upload Training Data")
-        st.markdown("Upload new images for retraining. Images will be added to the training set.")
         
-        # Get available classes
-        try:
-            response = requests.get(f"{API_URL}/classes", timeout=5)
-            classes = response.json().get("classes", [])
-        except:
-            classes = []
+        upload_type = st.radio("Upload type", ["Individual Images", "ZIP File"], horizontal=True)
         
-        class_name = st.selectbox(
-            "Select class",
-            options=classes if classes else ["(No classes available - enter manually)"],
-            help="Select the disease class for the uploaded images"
-        )
+        if upload_type == "ZIP File":
+            st.markdown("""
+            Upload a ZIP file with folders for each class:
+            ```
+            my_data.zip
+            ├── Tomato___Late_blight/
+            │   ├── image1.jpg
+            │   └── image2.jpg
+            └── Apple___healthy/
+                └── image3.jpg
+            ```
+            """)
+            
+            zip_file = st.file_uploader("Upload ZIP file", type=["zip"])
+            
+            if zip_file:
+                if st.button("Upload ZIP", use_container_width=True):
+                    with st.spinner("Extracting and uploading..."):
+                        try:
+                            files = {"file": (zip_file.name, zip_file.getvalue(), "application/zip")}
+                            response = requests.post(f"{API_URL}/upload/retrain_zip", files=files, timeout=120)
+                            result = response.json()
+                            if result.get("success"):
+                                st.success(f"Uploaded {result.get('total_images', 0)} images!")
+                                st.json(result.get("classes", {}))
+                                st.rerun()
+                            else:
+                                st.error(result.get("detail", "Upload failed"))
+                        except Exception as e:
+                            st.error(f"Upload failed: {e}")
         
-        custom_class = st.text_input(
-            "Or enter new class name",
-            placeholder="e.g., Tomato___New_Disease"
-        )
-        
-        final_class = custom_class if custom_class else class_name
-        
-        uploaded_files = st.file_uploader(
-            "Upload images",
-            type=["jpg", "jpeg", "png"],
-            accept_multiple_files=True,
-            help="Select multiple images for the selected class"
-        )
-        
-        if uploaded_files and final_class:
-            if st.button("Upload for Retraining", use_container_width=True):
-                with st.spinner("Uploading images..."):
+        else:
+            st.markdown("Upload individual images for a specific class.")
+            
+            # Get available classes
+            try:
+                response = requests.get(f"{API_URL}/classes", timeout=5)
+                classes = response.json().get("classes", [])
+            except:
+                classes = []
+            
+            class_name = st.selectbox(
+                "Select class",
+                options=classes if classes else ["(No classes available - enter manually)"],
+                help="Select the disease class for the uploaded images"
+            )
+            
+            custom_class = st.text_input(
+                "Or enter new class name",
+                placeholder="e.g., Tomato___New_Disease"
+            )
+            
+            final_class = custom_class if custom_class else class_name
+            
+            uploaded_files = st.file_uploader(
+                "Upload images",
+                type=["jpg", "jpeg", "png"],
+                accept_multiple_files=True,
+                help="Select multiple images for the selected class"
+            )
+            
+            if uploaded_files and final_class:
+                if st.button("Upload for Retraining", use_container_width=True):
+                    with st.spinner("Uploading images..."):
                     result = upload_retrain_images(uploaded_files, final_class)
                     if result.get("success"):
                         st.success(f"Successfully uploaded {len(uploaded_files)} images!")
