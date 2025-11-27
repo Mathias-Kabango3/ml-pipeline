@@ -113,30 +113,53 @@ HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/reso
 
 def download_model_from_url(url: str, dest_path: Path) -> bool:
     """Download model from external URL if not exists locally."""
-    import urllib.request
+    import requests as req
     
     if dest_path.exists():
-        logger.info(f"Model already exists at {dest_path}")
-        return True
+        file_size = dest_path.stat().st_size
+        # Check if file is valid (at least 1MB for a real model)
+        if file_size > 1_000_000:
+            logger.info(f"Model already exists at {dest_path} ({file_size/1_000_000:.1f} MB)")
+            return True
+        else:
+            logger.warning(f"Model file exists but seems corrupted ({file_size} bytes), re-downloading...")
+            dest_path.unlink()
     
     try:
         logger.info(f"Downloading model from {url}...")
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Add headers to avoid 403 errors
-        request = urllib.request.Request(
+        # Use requests library which handles redirects properly
+        response = req.get(
             url,
-            headers={'User-Agent': 'Mozilla/5.0 (compatible; PlantDiseaseAPI/1.0)'}
+            allow_redirects=True,
+            stream=True,
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; PlantDiseaseAPI/1.0)'},
+            timeout=300  # 5 minute timeout for large files
         )
+        response.raise_for_status()
         
-        with urllib.request.urlopen(request) as response:
-            with open(dest_path, 'wb') as out_file:
-                out_file.write(response.read())
+        # Get file size if available
+        total_size = int(response.headers.get('content-length', 0))
+        logger.info(f"Downloading {total_size/1_000_000:.1f} MB...")
+        
+        # Download with progress
+        downloaded = 0
+        with open(dest_path, 'wb') as out_file:
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    out_file.write(chunk)
+                    downloaded += len(chunk)
+                    if total_size > 0 and downloaded % (10 * 1024 * 1024) == 0:  # Log every 10MB
+                        logger.info(f"Downloaded {downloaded/1_000_000:.1f}/{total_size/1_000_000:.1f} MB")
         
         logger.info(f"Model downloaded successfully to {dest_path}")
         return True
     except Exception as e:
         logger.error(f"Failed to download model: {e}")
+        # Clean up partial download
+        if dest_path.exists():
+            dest_path.unlink()
         return False
 
 
