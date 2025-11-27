@@ -238,7 +238,26 @@ def load_model_and_classes():
         # Clear any cached data
         keras.backend.clear_session()
         
-        # Load class indices
+        # Default class names for the 15-class PlantVillage model
+        DEFAULT_CLASS_NAMES = {
+            0: "Apple___Apple_scab",
+            1: "Apple___Black_rot",
+            2: "Apple___Cedar_apple_rust",
+            3: "Apple___healthy",
+            4: "Blueberry___healthy",
+            5: "Cherry_(including_sour)___Powdery_mildew",
+            6: "Cherry_(including_sour)___healthy",
+            7: "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
+            8: "Corn_(maize)___Common_rust_",
+            9: "Corn_(maize)___Northern_Leaf_Blight",
+            10: "Corn_(maize)___healthy",
+            11: "Grape___Black_rot",
+            12: "Grape___Esca_(Black_Measles)",
+            13: "Grape___Leaf_blight_(Isariopsis_Leaf_Spot)",
+            14: "Grape___healthy"
+        }
+        
+        # Load class indices from file or use defaults
         class_indices_path = DATA_DIR / "index_to_class.json"
         if class_indices_path.exists():
             with open(class_indices_path, 'r') as f:
@@ -253,7 +272,9 @@ def load_model_and_classes():
                     class_names = class_info.get("class_names", [])
                     class_indices = {i: name for i, name in enumerate(class_names)}
             else:
-                class_indices = {}
+                # Use default class names
+                logger.info("Using default class names (no index_to_class.json found)")
+                class_indices = DEFAULT_CLASS_NAMES
         
         logger.info(f"Model loaded successfully with {len(class_indices)} classes")
         return model, class_indices
