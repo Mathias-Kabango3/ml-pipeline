@@ -107,6 +107,10 @@ class DatasetStatsResponse(BaseModel):
 
 
 # Helper functions
+# Hugging Face model URL (direct download link)
+HUGGINGFACE_MODEL_URL = "https://huggingface.co/mathiaskabango/plantvillage/resolve/main/plant_disease_resnet50_best.keras"
+
+
 def download_model_from_url(url: str, dest_path: Path) -> bool:
     """Download model from external URL if not exists locally."""
     import urllib.request
@@ -118,7 +122,17 @@ def download_model_from_url(url: str, dest_path: Path) -> bool:
     try:
         logger.info(f"Downloading model from {url}...")
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(url, str(dest_path))
+        
+        # Add headers to avoid 403 errors
+        request = urllib.request.Request(
+            url,
+            headers={'User-Agent': 'Mozilla/5.0 (compatible; PlantDiseaseAPI/1.0)'}
+        )
+        
+        with urllib.request.urlopen(request) as response:
+            with open(dest_path, 'wb') as out_file:
+                out_file.write(response.read())
+        
         logger.info(f"Model downloaded successfully to {dest_path}")
         return True
     except Exception as e:
@@ -129,10 +143,13 @@ def download_model_from_url(url: str, dest_path: Path) -> bool:
 def load_model_and_classes():
     """Load the trained model and class mappings."""
     try:
-        # Check for model download URL in environment variable
-        model_url = os.environ.get("MODEL_DOWNLOAD_URL")
-        if model_url:
-            default_model_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
+        # Check for model download URL in environment variable or use default HuggingFace URL
+        model_url = os.environ.get("MODEL_DOWNLOAD_URL", HUGGINGFACE_MODEL_URL)
+        default_model_path = MODELS_DIR / "plant_disease_resnet50_best.keras"
+        
+        # Always try to download if model doesn't exist locally
+        if not default_model_path.exists():
+            logger.info("Model not found locally, attempting to download from Hugging Face...")
             download_model_from_url(model_url, default_model_path)
         
         # Try to find the best model - check multiple patterns
